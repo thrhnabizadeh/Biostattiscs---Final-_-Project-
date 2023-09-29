@@ -1,0 +1,134 @@
+library(ggplot2)
+library(gplots)
+library(dplyr)
+library(MASS)
+library(tidyr)
+library(corrplot)
+library(ROCR)
+library(broom)
+
+setwd("C:/Users/thrhn/Desktop/Project")
+data <- read.csv("Europe Hotel Booking Satisfaction Score.csv")
+
+str(data)
+
+data[data=="<NA>"] = NA
+data %>%
+  summarise(across(everything(), ~ sum(. == "?", na.rm = TRUE)))
+data1<- drop_na(data)
+sum(is.na(data1))
+nrow(data1)
+
+data1$purpose_of_travel <- as.factor(data1$purpose_of_travel)
+data1$Gender <- as.factor(data1$Gender)
+data1$Type.of.Travel   <- as.factor(data1$Type.of.Travel)
+data1$Type.Of.Booking <- as.factor(data1$Type.Of.Booking)
+data1$ satisfaction  <- as.factor(data1$ satisfaction )
+levels(data1$ satisfaction)
+colnames(data1)
+str(data1)
+
+library(tidyverse)
+
+custom_function <- function(data1, Age  ) {
+  data1 %>%
+    summarise(out = mean({{Age  }})) %>%
+    pull(out)
+}
+
+custom_function(data1, Age  )
+
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data1, aes(x=`satisfaction`))+
+  geom_bar(fill="cadetblue", alpha=0.6)+
+  geom_text(aes(label=scales::percent((after_stat(count))/sum(after_stat(count)))), stat="count", vjust = -0.8, size=6)+
+  stat_count(aes(y=after_stat(count),label=paste0("n=",after_stat(count))),geom="text",vjust=1.2,size=5.8,color="gray35")+
+  labs(x="satisfaction", title = "Distribution of Customer Satisfaction")+
+  theme(text = element_text(size=16))
+
+ds_cor1 <- cor(subset(data1,select = c(Age, Hotel.wifi.service,Departure.Arrival..convenience,Ease.of.Online.booking, Hotel.location, Food.and.drink ,Stay.comfort ,Common.Room.entertainment,Checkin.Checkout.service ,Other.service ,Cleanliness)))
+summary(ds_cor1)
+options(repr.plot.width = 14, repr.plot.height = 8)
+corrplot(ds_cor1, na.label = " ", method="color", tl.col = "black", tl.cex = 1)
+
+data1$ satisfaction1 <- ifelse(data1$satisfaction == "satisfied", 1, 0)
+head(data1$ satisfaction1)
+head(data1$ satisfaction)
+str(data1)
+model1 <- glm(satisfaction1 ~ Cleanliness +Other.service +Checkin.Checkout.service+Common.Room.entertainment+Stay.comfort +Food.and.drink +Hotel.location + Ease.of.Online.booking +Departure.Arrival..convenience+Hotel.wifi.service ,data1,family="binomial")
+summary(model1)
+qchisq(0.95,10)
+142189-107368
+
+
+pred <- predict(model1, type = "response", newdata = data1)
+summary(pred)
+
+ROC_pred <- prediction(pred, data1$satisfaction1)
+ROC_perf<- performance(ROC_pred, measure = "tpr", x.measure = "fpr")
+options(repr.plot.width = 14, repr.plot.height = 8)
+plot(ROC_perf, colorize=TRUE, print.cutoffs.at=seq(0,1,by =0.1), text.adj=c(-0.3,1.6), text.cex = 1.2 , main="ROC Curve", xlab="1-Specificity", ylab="Sensitivity")
+
+auc <- as.numeric(performance(ROC_pred, measure = "auc")@y.values)
+noquote("The AUC ROC value is : ")
+auc
+noquote("The threshold value for cutoff from the ROC curve appears to be 0.7 ")
+
+confusion_matrix <- table(data1$satisfaction, pred>0.7)
+row.names(confusion_matrix)<- c("neutral or dissatisfied", "satisfied")
+noquote("Confusion Matrix")
+confusion_matrix
+
+accuracy <- (9863+14162)/(14162+411+1540+9863)
+accuracy
+Misclassification <- (1540+411)/(14162+411+1540+9863)
+Misclassification
+Precision <- 9863/(9863+1540)
+Precision
+Sensitivity <- 9863/(9863+411)
+Sensitivity
+Specificity <- 14162/(14162+ 1540)
+Specificity
+#The model's prediction accuracy is 92% and mis classification is 7%. Both measures indicate reliability of the model.
+
+# Precision is 86% , perhaps this needs to be improved.
+
+# Let's visualize customer satisfaction ratings for numeric data.
+
+ds_rating <- subset(data1, select=c("Age", "Hotel.wifi.service","Departure.Arrival..convenience","Ease.of.Online.booking", "Hotel.location", "Food.and.drink" ,"Stay.comfort" ,"Common.Room.entertainment","Checkin.Checkout.service" ,"Other.service" ,"Cleanliness"))
+options(repr.plot.width = 14, repr.plot.height = 8)
+ds_rating %>%
+  gather()%>%
+  ggplot(aes(value, fill = value)) +
+  facet_wrap(~ key, scales = "free", ncol=3) +
+  geom_histogram(stat="count", col="cadetblue")+
+  scale_fill_brewer(palette = "Blues")+
+  labs(title="Rating of Hotel Services")+
+  theme(text= element_text(size=14))
+
+# Do personal travelers report satisfaction more than group travelers?
+
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data1, aes(x=`Type.of.Travel`, fill = `satisfaction`))+
+  geom_bar(alpha=0.7)+
+  geom_text(aes(label= scales::percent((..count..)/sum(..count..))), stat="count",
+            vjust = 1.5, size=5)+
+  scale_fill_discrete(name = "Satisfaction Status", labels=c("Neutral or Dissatisfied", "Satisfied"))+
+  labs(x="Type.of.Travel", y="Count", title="Customer Satisfaction and Type.of.Travel ")+
+  theme(legend.position="right",text= element_text(size=16) )
+
+model2 <- lm(satisfaction1 ~ Gender +Type.of.Travel+ purpose_of_travel+Type.Of.Booking, data1)
+summary(model2)
+
+# let's remove purpose_of_travel
+model3 <- lm(satisfaction1 ~ Gender +Type.of.Travel+ Type.Of.Booking, data1)
+summary(model3)
+
+# Customer Satisfaction and Ease of Online Booking
+
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data1, aes(x=`Ease.of.Online.booking`, fill =`satisfaction`))+
+  geom_bar(position="dodge", alpha=0.5)+
+  labs(x="Rating", y="Count", title="Ease of online booking rating")+
+  scale_fill_discrete(name = "Satisfaction Status", labels=c("Neutral or Dissatisfied", "Satisfied"))+
+  theme(legend.position="right", text= element_text( size = 16))
